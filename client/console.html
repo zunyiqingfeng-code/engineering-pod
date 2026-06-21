@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>engineering-pod console</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #1c1c1a; color: #e6e4df;
+         font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  main { max-width: 760px; margin: 0 auto; padding: 24px; }
+  h1 { font-size: 16px; font-weight: 600; }
+  input, textarea, button, select {
+    background: #262624; color: inherit; border: 1px solid #3a3a37;
+    border-radius: 8px; padding: 8px 10px; font: inherit; width: 100%; box-sizing: border-box; }
+  .row { display: flex; gap: 8px; margin: 8px 0; }
+  .row > * { flex: 1; }
+  button { cursor: pointer; }
+  #log { white-space: pre-wrap; background: #161614; border: 1px solid #2c2c2a;
+         border-radius: 8px; padding: 12px; height: 320px; overflow: auto; margin-top: 12px; }
+  .muted { color: #8a8780; }
+  .block { color: #e08; } .warn { color: #db4; } .ok { color: #6c6; }
+</style>
+</head>
+<body>
+<main>
+  <h1>engineering-pod console <span class="muted">— reference client</span></h1>
+  <div class="row">
+    <input id="base" placeholder="http://127.0.0.1:8000">
+    <input id="token" placeholder="bearer token" type="password">
+  </div>
+  <textarea id="prompt" rows="3" placeholder="describe the task…"></textarea>
+  <div class="row">
+    <select id="backend">
+      <option value="">default backend</option>
+      <option value="primary">primary</option>
+      <option value="deepseek">deepseek</option>
+      <option value="custom">custom</option>
+    </select>
+    <button id="send">Submit</button>
+  </div>
+  <div id="log" class="muted">idle.</div>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  for (const k of ["base", "token"]) {
+    $(k).value = localStorage.getItem("pod." + k) || "";
+    $(k).addEventListener("change", () => localStorage.setItem("pod." + k, $(k).value.trim()));
+  }
+  const log = $("log");
+  const line = (t, cls) => {
+    const d = document.createElement("div");
+    if (cls) d.className = cls;
+    d.textContent = t;
+    log.appendChild(d);
+    log.scrollTop = log.scrollHeight;
+  };
+  const base = () => $("base").value.trim().replace(/\/+$/, "");
+  const headers = () => ({ "Authorization": "Bearer " + $("token").value.trim(),
+                           "Content-Type": "application/json" });
+
+  $("send").addEventListener("click", async () => {
+    const prompt = $("prompt").value.trim();
+    if (!prompt) return;
+    log.textContent = "";
+    line("submitting…", "muted");
+    try {
+      const r = await fetch(base() + "/tasks", {
+        method: "POST", headers: headers(),
+        body: JSON.stringify({ prompt, backend: $("backend").value || undefined }),
+      });
+      if (!r.ok) return line("submit failed: " + r.status, "block");
+      const { id } = await r.json();
+      line("task " + id, "muted");
+      const t = await (await fetch(base() + "/auth/ticket", { headers: headers() })).json();
+      const es = new EventSource(base() + "/tasks/" + id + "/events?ticket=" + encodeURIComponent(t.ticket));
+      es.onmessage = (e) => line(e.data);
+      es.addEventListener("end", async () => {
+        es.close();
+        const task = await (await fetch(base() + "/tasks/" + id, { headers: headers() })).json();
+        const blocks = (task.lint || []).filter((f) => f.severity === "BLOCK");
+        line("status: " + task.status, task.status === "done" ? "ok" : "warn");
+        if (blocks.length) line("delivery gate blocked " + blocks.length + " trace(s)", "block");
+      });
+      es.onerror = () => { line("stream closed", "muted"); es.close(); };
+    } catch (err) {
+      line("error: " + err.message, "block");
+    }
+  });
+</script>
+</body>
+</html>
