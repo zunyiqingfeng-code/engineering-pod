@@ -20,6 +20,15 @@ background — you can be asleep. You come back to artifacts you review and ship
 The machine carries the execution. You carry the judgment. The three pieces
 below are what make that division of labour safe enough to ship client work on.
 
+## Use cases
+
+- Submit a long simulation from a phone, close the laptop, and let the server
+  keep running.
+- Move heavy builds, batch reports, or data-processing jobs off a low-power
+  desktop.
+- Keep a simple browser console for checking logs, status, and artifacts while
+  away from the main workstation.
+
 ## Three pillars
 
 ### 1. Multi-backend failover (`app/backends.py`)
@@ -87,6 +96,20 @@ curl -s -X POST http://127.0.0.1:8000/tasks \
 Or open `client/console.html` in a browser, set the base URL + token, and watch
 the run stream live.
 
+## Demo scenario: offload a long job
+
+The reference flow is intentionally small:
+
+1. Start the API on a server that already has your toolchain installed.
+2. Open `client/console.html` from a laptop or phone browser.
+3. Submit a prompt such as "run the simulation script, save plots, and summarize
+   the numeric checks".
+4. Watch the live log over SSE, or disconnect and come back later.
+5. Review the task workspace under `POD_BASE/workspaces/` before delivering.
+
+This is not a remote-desktop replacement. It is a task runner for work that is
+better executed on a stable server than on the device in your hand.
+
 ## Configuration
 
 All config is environment-only (see `.env.example`). No secrets or infrastructure
@@ -112,6 +135,8 @@ values live in the source.
 
 This is a learning-grade reference. Review it against your own threat model
 before putting real work behind it.
+
+See [docs/deploy.md](docs/deploy.md) for deployment boundaries.
 
 ## What is intentionally not here
 
